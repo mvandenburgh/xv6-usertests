@@ -1,6 +1,8 @@
  
 name: xv6-usertests
 
+description: "GitHub CI for xv6 OS"
+
 on:
   push:
     branches: [ master ]
