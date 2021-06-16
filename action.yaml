@@ -1,0 +1,50 @@
+ 
+name: xv6-usertests
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v2
+
+      # add a syscall to xv6 that triggers a shutdown of qemu.
+      # also add code that calls this new syscall after usertests stops
+      # executing. Without this, xv6 would run indefinitely on the
+      # github CI runner.
+    - name: Add shutdown syscall to xv6 facilitate CI testing
+      run: | 
+        export TEMP=$(awk 'END {print $NF}' kernel/syscall.h)
+        export SYSCALL_NO=$(($TEMP+1))
+        echo -e "\nint sys_shutdown(void) { outb(0xf4, 0x00); return 0; }" >> kernel/sysproc.c
+        echo -e "\n #define SYS_shutdown $SYSCALL_NO" >> kernel/syscall.h
+        sed -i 's/};/[SYS_shutdown] sys_shutdown,\n};/g' kernel/syscall.c
+        sed -i 's/static int (\*syscalls\[\])(void) = {/extern int sys_shutdown(void); \n static int (\*syscalls\[\])(void) = {/g' kernel/syscall.c
+        echo -e "\n SYSCALL(shutdown)" >> user/usys.S
+        echo -e "\n int shutdown(void);" >> user/user.h
+        sed -i 's/failed\\n");/failed\\n"); shutdown();/g' user/usertests.c
+        sed -i 's/exectest();/exectest(); shutdown();/g' user/usertests.c
+        sed -i 's/exit();/if (argc == 4 \&\& strcmp(argv[1], "ALL") == 0 \&\& strcmp(argv[2], "TESTS") == 0 \&\& strcmp(argv[3], "PASSED") == 0)shutdown();\n else exit();/g' user/echo.c
+        echo -e "\n QEMUEXTRA = -device isa-debug-exit,iobase=0xf4,iosize=0x04" >> Makefile
+    - name: install qemu
+      run: sudo apt-get update && sudo apt-get install qemu-system-i386
+
+    - name: make
+      run: make
+
+    - name: Run usertests.c
+      run: |
+        echo " usertests" | make qemu-nox | tee /dev/stderr | grep -P "ALL TESTS PASS" > out.file
+        cat out.file | grep "ALL TESTS PASS"
+      # check the exit code of grep to see if the tests passed or not
+    - name: Tests passed
+      if: success()
+      run: exit 0
+    - name: Tests failed
+      if: failure()
+      run: exit 1
