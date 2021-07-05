@@ -1,7 +1,7 @@
  
 name: xv6-usertests
 
-description: "GitHub CI for xv6 OS"
+description: "GitHub CI for xv6 OS'
 
 on:
   push:
@@ -10,7 +10,7 @@ on:
     branches: [ master ]
 
 jobs:
-  build:
+  test:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v2
